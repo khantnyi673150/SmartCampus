@@ -1,17 +1,69 @@
-# smart_class_checkin_reflection_app
+# Smart Class Check-in & Learning Reflection App
 
-A new Flutter project.
+Mobile lab-test prototype for university attendance verification and learning reflection.
 
-## Getting Started
+## Project Overview
+This app allows students to:
+- Check in before class
+- Check out after class
+- Verify attendance with QR scan + GPS location
+- Submit pre-class and post-class reflection forms
+- View records and attendance sheet with search and map links
 
-This project is a starting point for a Flutter application.
+## Main Features
+- **Home Screen** with 3 actions: Check-in, Finish Class, View Records
+- **Check-in Flow**
+	- Student ID + Student Name
+	- Previous topic, expected topic, mood
+	- QR scan + GPS + timestamp capture
+- **Finish Class Flow**
+	- Student ID + Student Name
+	- Learned today + feedback
+	- QR scan + GPS + timestamp capture
+- **View Records**
+	- Separate Check-in and Check-out history
+	- Attendance Sheet table view
+	- Search by ID, name, date, time, status
+	- `Open in Maps` action for GPS coordinates
+- **Attendance Status Rule**
+	- `Finished`: same student has both check-in and check-out on the same day
+	- `Not finished`: checked in but no matching check-out
 
-A few resources to get you started if this is your first Flutter project:
+## Tech Stack
+- Flutter + Dart
+- `geolocator` (GPS)
+- `mobile_scanner` (QR code scan)
+- `shared_preferences` (local prototype storage)
+- Firebase Hosting (web deployment)
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## Project Structure
+- `lib/screens/` – UI screens (`home`, `checkin`, `finish_class`, `records`, `qr_scanner`)
+- `lib/models/` – data models
+- `lib/data/local_db.dart` – local storage and attendance logic
+- `lib/services/location_service.dart` – GPS permission/location handling
+- `PRD_Smart_Class_Checkin_Learning_Reflection_App.md` – short PRD
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Run Locally
+```bash
+flutter pub get
+flutter analyze
+flutter test
+flutter run
+```
+
+## Build Web
+```bash
+flutter build web
+```
+
+## Firebase Hosting Deployment
+This project is configured to deploy to:
+- `smart-campus-checkin-2026`
+
+Deploy command:
+```bash
+firebase deploy --only hosting
+```
+
+## GitHub Repository
+- https://github.com/khantnyi673150/SmartCampus

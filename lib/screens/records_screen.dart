@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../data/local_db.dart';
+
+enum RecordsViewMode { checkin, checkout, attendanceSheet }
 
 class RecordsScreen extends StatefulWidget {
   const RecordsScreen({super.key});
@@ -12,7 +15,7 @@ class RecordsScreen extends StatefulWidget {
 }
 
 class _RecordsScreenState extends State<RecordsScreen> {
-  bool _showCheckinHistory = true;
+  RecordsViewMode _mode = RecordsViewMode.checkin;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -60,9 +63,9 @@ class _RecordsScreenState extends State<RecordsScreen> {
                       title: 'Check-in History',
                       icon: Icons.login_rounded,
                       accentColor: const Color(0xFF2E6BFF),
-                      selected: _showCheckinHistory,
+                      selected: _mode == RecordsViewMode.checkin,
                       onTap: () {
-                        setState(() => _showCheckinHistory = true);
+                        setState(() => _mode = RecordsViewMode.checkin);
                       },
                     ),
                   ),
@@ -72,9 +75,21 @@ class _RecordsScreenState extends State<RecordsScreen> {
                       title: 'Check-out History',
                       icon: Icons.logout_rounded,
                       accentColor: const Color(0xFF9B3DFF),
-                      selected: !_showCheckinHistory,
+                      selected: _mode == RecordsViewMode.checkout,
                       onTap: () {
-                        setState(() => _showCheckinHistory = false);
+                        setState(() => _mode = RecordsViewMode.checkout);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _HistoryToggleCard(
+                      title: 'Attendance Sheet',
+                      icon: Icons.table_chart_rounded,
+                      accentColor: const Color(0xFF0F766E),
+                      selected: _mode == RecordsViewMode.attendanceSheet,
+                      onTap: () {
+                        setState(() => _mode = RecordsViewMode.attendanceSheet);
                       },
                     ),
                   ),
@@ -95,16 +110,132 @@ class _RecordsScreenState extends State<RecordsScreen> {
               ),
             ),
             Expanded(
-              child: _HistoryList(
-                futureRecords: _showCheckinHistory
-                    ? LocalDb.instance.getCheckinHistory()
-                    : LocalDb.instance.getCheckoutHistory(),
-                query: _searchController.text,
-              ),
+              child: _mode == RecordsViewMode.attendanceSheet
+                  ? _AttendanceSheetList(query: _searchController.text)
+                  : _HistoryList(
+                      futureRecords: _mode == RecordsViewMode.checkin
+                          ? LocalDb.instance.getCheckinHistory()
+                          : LocalDb.instance.getCheckoutHistory(),
+                      query: _searchController.text,
+                    ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AttendanceSheetList extends StatelessWidget {
+  const _AttendanceSheetList({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: LocalDb.instance.getAttendanceSheet(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        var rows = snapshot.data ?? <Map<String, dynamic>>[];
+        if (query.trim().isNotEmpty) {
+          final normalized = query.trim().toLowerCase();
+          rows = rows.where((row) {
+            final studentId = (row['studentId']?.toString() ?? '').toLowerCase();
+            final studentName =
+                (row['studentName']?.toString() ?? '').toLowerCase();
+            final attendance =
+                (row['attendance']?.toString() ?? '').toLowerCase();
+            final ts = row['timestamp']?.toString() ?? '';
+            final date = DateTime.tryParse(ts);
+            final dateText = date == null
+                ? ''
+                : '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            final timeText = date == null
+                ? ''
+                : '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}:${date.second.toString().padLeft(2, '0')}';
+
+            return studentId.contains(normalized) ||
+                studentName.contains(normalized) ||
+                attendance.contains(normalized) ||
+                dateText.contains(normalized) ||
+                timeText.contains(normalized);
+          }).toList();
+        }
+
+        if (rows.isEmpty) {
+          return const Center(child: Text('No attendance sheet data found.'));
+        }
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(12),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columns: const [
+                  DataColumn(label: Text('Student ID')),
+                  DataColumn(label: Text('Student Name')),
+                  DataColumn(label: Text('Date')),
+                  DataColumn(label: Text('Time')),
+                  DataColumn(label: Text('Attendance')),
+                ],
+                rows: rows.map((row) {
+                  final ts = row['timestamp']?.toString() ?? '';
+                  final date = DateTime.tryParse(ts);
+                  final dateText = date == null
+                      ? 'Unknown Date'
+                      : '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+                  final timeText = date == null
+                      ? '--:--:--'
+                      : '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}:${date.second.toString().padLeft(2, '0')}';
+                  final attendance =
+                      row['attendance']?.toString() ?? 'Not finished';
+                  final finished = attendance == 'Finished';
+
+                  return DataRow(
+                    cells: [
+                      DataCell(Text(row['studentId']?.toString() ?? 'UNKNOWN')),
+                      DataCell(Text(row['studentName']?.toString() ?? 'Unknown')),
+                      DataCell(Text(dateText)),
+                      DataCell(Text(timeText)),
+                      DataCell(
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: finished
+                                ? const Color(0xFF16A34A)
+                                : const Color(0xFFDC2626),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            attendance,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -190,11 +321,18 @@ class _HistoryList extends StatelessWidget {
             final timeText = date == null ? '' : _formatTime(date);
             final id = (record['studentId']?.toString() ?? '').toLowerCase();
             final name = (record['studentName']?.toString() ?? '').toLowerCase();
+            final lat = record['latitude']?.toString().toLowerCase() ?? '';
+            final lng = record['longitude']?.toString().toLowerCase() ?? '';
+            final attendance =
+                (record['attendance']?.toString() ?? '').toLowerCase();
 
             return id.contains(normalized) ||
                 name.contains(normalized) ||
                 dateText.toLowerCase().contains(normalized) ||
-                timeText.toLowerCase().contains(normalized);
+                timeText.toLowerCase().contains(normalized) ||
+                lat.contains(normalized) ||
+                lng.contains(normalized) ||
+                attendance.contains(normalized);
           }).toList();
         }
 
@@ -241,14 +379,90 @@ class _HistoryList extends StatelessWidget {
                         record['timestamp']?.toString() ?? '',
                       );
                       final time = date == null ? '--:--:--' : _formatTime(date);
+                      final latitude = record['latitude'] as double?;
+                      final longitude = record['longitude'] as double?;
+                        final attendance =
+                          record['attendance']?.toString() ?? 'Not finished';
+                        final attendanceFinished = attendance == 'Finished';
+                      final locationText =
+                          latitude == null || longitude == null
+                          ? 'Location: unavailable'
+                          : 'Location: ${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}';
 
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(
                           '${record['type']} • ID: ${record['studentId']}',
                         ),
-                        subtitle: Text(
-                          'Student: ${record['studentName']}\nTime: $time',
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Student: ${record['studentName']}\nTime: $time\n$locationText',
+                            ),
+                            const SizedBox(height: 6),
+                            InkWell(
+                              onTap: () {
+                                _openInMaps(context, latitude, longitude);
+                              },
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.map_outlined,
+                                    size: 18,
+                                    color: latitude == null || longitude == null
+                                        ? Colors.grey
+                                        : Theme.of(context).colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Open in Maps',
+                                    style: TextStyle(
+                                      color: latitude == null || longitude == null
+                                          ? Colors.grey
+                                          : Theme.of(context).colorScheme.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              'Attendance',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.black54,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: attendanceFinished
+                                    ? const Color(0xFF16A34A)
+                                    : const Color(0xFFDC2626),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                attendance,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     }),
@@ -274,5 +488,29 @@ class _HistoryList extends StatelessWidget {
     final minute = date.minute.toString().padLeft(2, '0');
     final second = date.second.toString().padLeft(2, '0');
     return '$hour:$minute:$second';
+  }
+
+  static Future<void> _openInMaps(
+    BuildContext context,
+    double? latitude,
+    double? longitude,
+  ) async {
+    if (latitude == null || longitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location is unavailable for this record.')),
+      );
+      return;
+    }
+
+    final uri = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude',
+    );
+    final opened = await launchUrl(uri);
+
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open map link.')),
+      );
+    }
   }
 }
